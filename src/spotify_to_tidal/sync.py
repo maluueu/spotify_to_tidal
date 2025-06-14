@@ -388,13 +388,19 @@ async def sync_artists(spotify_session: spotipy.Spotify, tidal_session: tidalapi
 
         # Search by ISRC
         if isrc:
-            isrc_results = tidal_session.get_tracks_by_isrc(isrc)
+            isrc_results = None
+            try:
+                isrc_results = tidal_session.get_tracks_by_isrc(isrc)
+            except Exception as e:
+                print(f"Error searching for ISRC {isrc}: {str(e)}")
+                pass
             if isrc_results and "tracks" in isrc_results and isrc_results["tracks"]:
                 for tidal_track in isrc_results["tracks"]:
                     if isrc_match(tidal_track, spotify_track):
                         return tidal_track
 
         #Fallback to song name and artist name
+        print(f"Fallback search for track '{track_name}' by '{artist_name}' on Tidal...")
         query = f"{track_name} {artist_name}"
         search_results = tidal_session.search(query, models=[tidalapi.media.Track])
         if search_results and "tracks" in search_results:
@@ -409,13 +415,17 @@ async def sync_artists(spotify_session: spotipy.Spotify, tidal_session: tidalapi
 
     async def match_artist_with_tidal_tracks(spotify_artist: dict, tidal_candidates: List[tidalapi.artist.Artist]):
         """Match a Spotify artist with Tidal artists using their top tracks."""
+        print(f"Matching Spotify artist '{spotify_artist['name']}' with Tidal artists using top tracks...")
         top_tracks = spotify_session.artist_top_tracks(spotify_artist['id'])['tracks'][:5]
+        print(f"Found {len(top_tracks)} top tracks for Spotify artist '{spotify_artist['name']}'.")
         if not top_tracks:
             print(f"No top tracks found for Spotify artist {spotify_artist['name']}.")
             return None
 
         for tidal_artist in tidal_candidates:
+            print(f"Checking Tidal artist '{tidal_artist.name}' for matches...")
             for track in top_tracks:
+                print(f"Searching for track '{track['name']}' by '{track['artists'][0]['name']}' on Tidal...")
                 tidal_track = await find_tidal_track_by_spotify_track(track, tidal_session)
                 if tidal_track and tidal_artist.id in [a.id for a in tidal_track.artists]:
                     return tidal_artist
@@ -432,10 +442,13 @@ async def sync_artists(spotify_session: spotipy.Spotify, tidal_session: tidalapi
 
     # Load existing followed artists from Tidal
     tidal_artists = tidal_session.user.favorites.artists()
+    print(f"Found {len(tidal_artists)} artists followed already on Tidal.")
+    
     tidal_artist_names = set([normalize(artist.name.lower()) for artist in tidal_artists])
 
     # Filter new artists that are not already followed on Tidal
     new_artists = [artist for artist in spotify_artists if normalize(artist['name'].lower()) not in tidal_artist_names]
+    print(f"Found {len(new_artists)} new artists to add to Tidal.")
 
     if not new_artists:
         print("All followed artists are already in Tidal.")
@@ -444,12 +457,16 @@ async def sync_artists(spotify_session: spotipy.Spotify, tidal_session: tidalapi
     # Add new artists to Tidal
     print(f"Searching and adding {len(new_artists)} new artists to Tidal.")
     for spotify_artist in tqdm(new_artists, desc="Adding new artists to Tidal"):
+        print(f"Searching for artist '{spotify_artist['name']}' on Tidal...")
         search_results = tidal_session.search(spotify_artist['name'], models=[tidalapi.artist.Artist])
         tidal_candidates = search_results.get('artists', [])
+        print(f"Found {len(tidal_candidates)} potential matches on Tidal for artist '{spotify_artist['name']}'.")
         if not tidal_candidates:
             print(f"No Tidal matches found for artist '{spotify_artist['name']}'.")
             continue
+        print(f"Matching artist '{spotify_artist['name']}' with Tidal tracks...")
         matched_artist = await match_artist_with_tidal_tracks(spotify_artist, tidal_candidates)
+        print(f"Matched artist: {matched_artist.name if matched_artist else 'None'}")
         if matched_artist:
             tidal_session.user.favorites.add_artist(matched_artist.id)
             print(f"Added artist '{spotify_artist['name']}' to Tidal.")
