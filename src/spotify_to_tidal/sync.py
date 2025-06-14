@@ -537,6 +537,39 @@ async def sync_albums(spotify_session: spotipy.Spotify, tidal_session: tidalapi.
 
     print("Album synchronization complete.")
 
+async def sync_tidal_top100_to_playlist(tidal_session: tidalapi.Session, config: dict):
+    """Synchronize top 100 liked Tidal tracks to seperate Tidal playlist."""
+    print("Loading existing favorite tracks from Tidal")
+    liked_tracks = await get_all_favorites(tidal_session.user.favorites, order='DATE', order_direction='DESC') # List[tidalapi.Track]
+    print(f"Found {len(liked_tracks)} existing favorite tracks on Tidal")
+    liked_tracks = liked_tracks[:100] # Limit to top 100 liked tracks
+    print(f"Limiting to top 100 liked tracks: {len(liked_tracks)} tracks")
+    if not liked_tracks:
+        print("No liked tracks found on Tidal")
+        return
+    # Clear the existing top 100 playlist
+    tidal_playlists = await get_all_playlists(tidal_session.user)
+    top_100_playlist = None
+    for playlist in tidal_playlists:
+        print(f"Found Tidal playlist: '{playlist.name}' with id {playlist.id}")
+        if playlist.id == config.get('sync_tidal_top100_to_playlist_id'):
+            top_100_playlist = playlist
+            break
+    if top_100_playlist:
+        print (f"Found existing Tidal top 100 playlist: '{top_100_playlist.name}'")
+        print("Clearing existing Tidal top 100 playlist") 
+        clear_tidal_playlist(top_100_playlist)
+    else:
+        print("Tidal top 100 playlist not found")
+        return
+    # Add the liked tracks to the top 100 playlist
+    print("Adding top 100 liked tracks to Tidal top 100 playlist")
+    try:
+        add_multiple_tracks_to_playlist(top_100_playlist, [track.id for track in liked_tracks])
+        print(f"Added {len(liked_tracks)} tracks to Tidal top 100 playlist")
+    except Exception as e:
+        print(f"Error adding tracks to Tidal top 100 playlist: {str(e)}")
+        return
 
 def sync_playlists_wrapper(spotify_session: spotipy.Spotify, tidal_session: tidalapi.Session, playlists, config: dict):
   for spotify_playlist, tidal_playlist in playlists:
@@ -551,6 +584,9 @@ def sync_artists_wrapper(spotify_session: spotipy.Spotify, tidal_session: tidala
 
 def sync_albums_wrapper(spotify_session: spotipy.Spotify, tidal_session: tidalapi.Session, config: dict):
     asyncio.run(sync_albums(spotify_session=spotify_session, tidal_session=tidal_session, config=config))
+
+def sync_tidal_top100_to_playlist_wrapper(spotify_session: spotipy.Spotify, tidal_session: tidalapi.Session, config: dict):
+    asyncio.run(sync_tidal_top100_to_playlist(tidal_session=tidal_session, config=config))
 
 def get_tidal_playlists_wrapper(tidal_session: tidalapi.Session) -> Mapping[str, tidalapi.Playlist]:
     tidal_playlists = asyncio.run(get_all_playlists(tidal_session.user))
@@ -611,4 +647,3 @@ def get_playlists_from_config(spotify_session: spotipy.Spotify, tidal_session: t
             raise e
         output.append((spotify_playlist, tidal_playlist))
     return output
-

@@ -21,6 +21,8 @@ spotify:
 sync_favorites_default: true
 sync_artists_default: true
 sync_albums_default: true
+sync_tidal_top100_to_playlist: false
+sync_tidal_top100_to_playlist_id: playlist_id_here
 
 # increasing these parameters should increase the search speed, while decreasing reduces likelihood of 429 errors
 max_concurrency: 10 # max concurrent connections at any given time
